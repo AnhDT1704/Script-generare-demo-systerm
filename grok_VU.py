@@ -579,8 +579,8 @@ class EnhancedVideoScriptGenerator:
         
         Args:
             api_key (str): Gemini API key
-            claude_api_key (str): Claude/OpenRouter API key
-            use_openrouter (bool): True để dùng OpenRouter, False để dùng Anthropic trực tiếp
+            claude_api_key (str): OpenRouter API key
+            use_openrouter (bool): True để dùng OpenRouter
             storage_root (str): Thư mục lưu trữ
         """
         self.storage = VideoStorageManager(storage_root)
@@ -592,7 +592,10 @@ class EnhancedVideoScriptGenerator:
             self.claude_client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.claude_api_key,
-                default_headers={"HTTP-Referer": "https://github.com/AnhDT1704/Script-generare-demo-systerm"}
+                default_headers={
+                    "HTTP-Referer": "https://github.com/AnhDT1704/Script-generare-demo-systerm",
+                    "X-Title": "Video Analysis & Script Generator"
+                }
             )
         else:
             from anthropic import Anthropic
@@ -895,22 +898,13 @@ class EnhancedVideoScriptGenerator:
             Chỉ trả về kịch bản mới hoàn chỉnh, không thêm giải thích.
             """
             
-            if self.use_openrouter:
-                completion = self.claude_client.chat.completions.create(
-                    model="anthropic/claude-3.5-sonnet",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2000,
-                    temperature=0.7,
-                )
-                return completion.choices[0].message.content.strip()
-            else:
-                message = self.claude_client.messages.create(
-                    model="claude-3-5-sonnet-20240620",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                return message.content[0].text.strip()
+            message = self.claude_client.messages.create(
+                model="claude-3",
+                max_tokens=2000,
+                temperature=0.7,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text.strip()
             
         except Exception as e:
             print(f"Lỗi chỉnh sửa kịch bản: {e}")

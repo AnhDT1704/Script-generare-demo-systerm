@@ -592,6 +592,7 @@ class EnhancedVideoScriptGenerator:
             self.claude_client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.claude_api_key,
+                default_headers={"HTTP-Referer": "https://github.com/AnhDT1704/Script-generare-demo-systerm"}
             )
         else:
             from anthropic import Anthropic
@@ -857,10 +858,10 @@ class EnhancedVideoScriptGenerator:
             if self.use_openrouter:
                 # Gọi qua OpenRouter (như ví dụ bạn đưa)
                 completion = self.claude_client.chat.completions.create(
-                    model="anthropic/claude-3.5-sonnet",
+                    model="anthropic/claude-2.1",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=500,  # Giới hạn để tránh dài
-                    temperature=0.7,  # Creative nhưng consistent
+                    temperature=0.7  # Creative nhưng consistent
                 )
                 return completion.choices[0].message.content.strip()
             else:

@@ -12,4 +12,5 @@ imageio>=2.9.0
 imageio-ffmpeg>=0.4.3
 tqdm>=4.43.0
 proglog>=0.1.9
+openai==1.12.0
 

@@ -6,7 +6,13 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
-import cv2
+try:
+    import cv2
+except ImportError:
+    print("Warning: Could not import cv2. Installing opencv-python-headless...")
+    import subprocess
+    subprocess.check_call(['pip', 'install', 'opencv-python-headless', '--no-cache-dir'])
+    import cv2
 import google.generativeai as genai
 import base64
 import tempfile

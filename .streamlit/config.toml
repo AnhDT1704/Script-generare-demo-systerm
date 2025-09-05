@@ -1,0 +1,5 @@
+[server]
+enableCORS = false
+
+[logger]
+level = "info"

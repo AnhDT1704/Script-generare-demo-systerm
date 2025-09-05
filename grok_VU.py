@@ -19,7 +19,8 @@ from pathlib import Path
 import PIL.Image
 import io
 from openai import OpenAI
-import re  # Thêm import re để sử dụng regex
+import re
+import httpx  # Thêm import httpx cho OpenRouter client
 
 @dataclass
 class VideoInfo:
@@ -598,12 +599,10 @@ class EnhancedVideoScriptGenerator:
                 api_key=self.claude_api_key,
                 default_headers={
                     "HTTP-Referer": "https://github.com/AnhDT1704/Script-generare-demo-systerm",
-                    "X-Title": "Video Analysis & Script Generator"
+                    "X-Title": "Video Analysis & Script Generator",
+                    "User-Agent": "Script Generator Demo v1.0"
                 },
-                http_client=httpx.Client(
-                    follow_redirects=True,
-                    timeout=60.0
-                )
+                timeout=60.0  # Tăng timeout để tránh lỗi timeout
             )
         else:
             from anthropic import Anthropic
@@ -846,48 +845,110 @@ class EnhancedVideoScriptGenerator:
     def _generate_voiceover_for_scene(self, video_info: VideoInfo, main_prompt: str, 
                                       tone: str, position: str, previous_voiceover: str = "", next_analysis: str = "") -> str:
         """Tạo voiceover dùng Claude cho chất lượng cao hơn, với liên kết cảnh."""
+        # Comment hoặc xóa dòng tính max_words
+        # max_words = int(video_info.duration * 150 / 60)  # ~150 từ/phút
+        
+        # Prompt chi tiết để Claude tạo voiceover hay, liên kết tốt, chung chung cho mọi chủ đề
+        prompt = f"""
+        Bạn là một biên kịch chuyên nghiệp, tạo voiceover script cho video dựa trên prompt người dùng. Đảm bảo voiceover:
+        - Hấp dẫn, tự nhiên như kể chuyện, sử dụng ngôn ngữ phù hợp với chủ đề.
+        - Nội dung voiceover bạn tạo ra phải bám sát với nội dung hình ảnh trên video, không được làm thông tin voiceover script sai lệch sự thật
+        - Liên kết mượt mà với cảnh trước (tiếp nối ý từ voiceover trước) và dẫn dắt sang cảnh sau (dựa trên mô tả cảnh sau).
+        - Tone: {tone}
+        - Vị trí cảnh: {position} (opening: giới thiệu, middle: phát triển, ending: kết thúc).
+        - Chủ đề tổng: {main_prompt}
+        - Mô tả cảnh hiện tại: {video_info.analysis_result}
+        - Voiceover cảnh trước (nếu có, tiếp nối ý): {previous_voiceover}
+        - Mô tả cảnh sau (nếu có, dẫn dắt sang): {next_analysis}
+        
+        Chỉ trả về nội dung voiceover thuần túy, không thêm giải thích.
+        """
+            
         try:
-            # Comment hoặc xóa dòng tính max_words
-            # max_words = int(video_info.duration * 150 / 60)  # ~150 từ/phút
-            
-            # Prompt chi tiết để Claude tạo voiceover hay, liên kết tốt, chung chung cho mọi chủ đề
-            prompt = f"""
-            Bạn là một biên kịch chuyên nghiệp, tạo voiceover script cho video dựa trên prompt người dùng. Đảm bảo voiceover:
-            - Hấp dẫn, tự nhiên như kể chuyện, sử dụng ngôn ngữ phù hợp với chủ đề.
-            - Nội dung voiceover bạn tạo ra phải bám sát với nội dung hình ảnh trên video, không được làm thông tin voiceover script sai lệch sự thật
-            - Liên kết mượt mà với cảnh trước (tiếp nối ý từ voiceover trước) và dẫn dắt sang cảnh sau (dựa trên mô tả cảnh sau).
-            - Tone: {tone}
-            - Vị trí cảnh: {position} (opening: giới thiệu, middle: phát triển, ending: kết thúc).
-            - Chủ đề tổng: {main_prompt}
-            - Mô tả cảnh hiện tại: {video_info.analysis_result}
-            - Voiceover cảnh trước (nếu có, tiếp nối ý): {previous_voiceover}
-            - Mô tả cảnh sau (nếu có, dẫn dắt sang): {next_analysis}
-            
-            Chỉ trả về nội dung voiceover thuần túy, không thêm giải thích.
-            """
-            
             if self.use_openrouter:
-                # Gọi qua OpenRouter (như ví dụ bạn đưa)
+                # Gọi qua OpenRouter với cấu hình tối ưu
                 completion = self.claude_client.chat.completions.create(
-                    model="anthropic/claude-2.1",
+                    model="anthropic/claude-3.5-sonnet",  # Cập nhật model đúng
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=500,  # Giới hạn để tránh dài
-                    temperature=0.7  # Creative nhưng consistent
+                    max_tokens=800,
+                    temperature=0.7
                 )
-                return completion.choices[0].message.content.strip()
+                response = completion.choices[0].message.content.strip()
             else:
-                # Gọi trực tiếp Anthropic
+                # Gọi trực tiếp Anthropic với cấu hình tối ưu
                 message = self.claude_client.messages.create(
-                    model="claude-3-5-sonnet-20240620",
-                    max_tokens=500,
+                    model="anthropic/claude-3.5-sonnet",  # Cập nhật model đúng
+                    max_tokens=800,
                     temperature=0.7,
                     messages=[{"role": "user", "content": prompt}]
                 )
-                return message.content[0].text.strip()
+                response = message.content[0].text.strip()
+            
+            if not response:
+                raise Exception("Claude trả về kết quả rỗng")
+                
+            return response
             
         except Exception as e:
-            print(f"Lỗi tạo voiceover với Claude: {e}")
-            return f"[Voiceover cho {video_info.original_name}] (Fallback)"
+            error_details = f"Lỗi tạo voiceover với Claude: {str(e)}"
+            print(error_details)
+            
+            # Log lỗi để debug
+            with open("voiceover_errors.log", "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now()}] Error Details: {error_details}")
+                f.write(f"\n[{datetime.now()}] Prompt: {prompt}")
+                f.write(f"\n[{datetime.now()}] Video Info: {video_info.original_name}\n")
+            
+            # Thử lại với prompt đơn giản hơn
+            try:
+                simplified_prompt = f"""
+                Tạo voiceover ngắn gọn cho video này. Tone: {tone}. 
+                Nội dung video: {video_info.analysis_result}
+                """
+                
+                if self.use_openrouter:
+                    completion = self.claude_client.chat.completions.create(
+                        model="anthropic/claude-3.5-sonnet",  # Cập nhật model đúng
+                        messages=[{"role": "user", "content": simplified_prompt}],
+                        max_tokens=800,
+                        temperature=0.7
+                    )
+                    return completion.choices[0].message.content.strip()
+                else:
+                    message = self.claude_client.messages.create(
+                        model="claude-3-5-sonnet-20240620",
+                        max_tokens=800,
+                        temperature=0.7,
+                        messages=[{"role": "user", "content": simplified_prompt}]
+                    )
+                    return message.content[0].text.strip()
+                    
+            except Exception as retry_error:
+                print(f"Lỗi thử lại với Claude: {str(retry_error)}")
+                # Log lỗi thử lại
+                with open("voiceover_errors.log", "a", encoding="utf-8") as f:
+                    f.write(f"\n[{datetime.now()}] Retry Error: {str(retry_error)}\n")
+                
+                return f"[Voiceover cho {video_info.original_name}] (Lỗi: Không thể kết nối với Claude. Vui lòng thử lại sau.)"
+            
+            # Thử backup với model khác
+            try:
+                # Fallback to GPT model
+                backup_prompt = f"Tạo voiceover ngắn gọn cho video dựa trên: {video_info.analysis_result}"
+                backup_completion = self.openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": backup_prompt}],
+                    max_tokens=200,
+                    temperature=0.7
+                )
+                return backup_completion.choices[0].message.content.strip()
+            except Exception as backup_error:
+                print(f"Lỗi backup model: {str(backup_error)}")
+                # Lưu lỗi để debug
+                with open("voiceover_errors.log", "a") as f:
+                    f.write(f"\n[{datetime.now()}] Primary Error: {error_details}")
+                    f.write(f"\n[{datetime.now()}] Backup Error: {str(backup_error)}\n")
+                return f"[Voiceover cho {video_info.original_name}] (Lỗi: Không thể kết nối với Claude. Vui lòng thử lại sau.)"
     
     def _edit_script(self, current_script: str, edit_prompt: str, main_prompt: str, tone: str) -> str:
         """Chỉnh sửa kịch bản dựa trên yêu cầu người dùng dùng Claude."""

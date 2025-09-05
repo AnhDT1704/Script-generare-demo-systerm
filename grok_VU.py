@@ -589,13 +589,21 @@ class EnhancedVideoScriptGenerator:
         self.use_openrouter = use_openrouter
         
         if self.use_openrouter:
+            # Cấu hình cho OpenRouter với OpenAI client phiên bản mới
+            from openai import AsyncOpenAI, OpenAI
+            import httpx
+            
             self.claude_client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.claude_api_key,
                 default_headers={
                     "HTTP-Referer": "https://github.com/AnhDT1704/Script-generare-demo-systerm",
                     "X-Title": "Video Analysis & Script Generator"
-                }
+                },
+                http_client=httpx.Client(
+                    follow_redirects=True,
+                    timeout=60.0
+                )
             )
         else:
             from anthropic import Anthropic

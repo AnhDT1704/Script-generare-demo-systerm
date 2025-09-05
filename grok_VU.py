@@ -6,13 +6,10 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
-try:
-    import cv2
-except ImportError:
-    print("Warning: Could not import cv2. Installing opencv-python-headless...")
-    import subprocess
-    subprocess.check_call(['pip', 'install', 'opencv-python-headless', '--no-cache-dir'])
-    import cv2
+import subprocess
+import sys
+
+from moviepy.editor import VideoFileClip
 import google.generativeai as genai
 import base64
 import tempfile
@@ -119,24 +116,21 @@ class OptimizedVideoAnalyzer:
     
     def analyze_video_frames(self, video_path: str) -> str:
         """Phân tích video qua frames"""
-        cap = cv2.VideoCapture(video_path)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        video = VideoFileClip(video_path)
+        total_frames = int(video.fps * video.duration)
         
         # Lấy 3 frames: đầu, giữa, cuối
         frame_positions = [0, total_frames//2, total_frames-1]
         images = []
         
         for pos in frame_positions:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
-            ret, frame = cap.read()
-            if ret:
-                # Resize và convert
-                frame = cv2.resize(frame, (640, 480))
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_image = PIL.Image.fromarray(frame_rgb)
-                images.append(pil_image)
+            time = pos / video.fps
+            frame = video.get_frame(time)
+            # Resize frame to 640x480
+            pil_image = PIL.Image.fromarray(frame).resize((640, 480))
+            images.append(pil_image)
         
-        cap.release()
+        video.close()
         
         if not images:
             raise Exception("Không thể trích xuất frames")
@@ -158,10 +152,9 @@ class OptimizedVideoAnalyzer:
     def analyze_video_metadata(self, video_path: str) -> str:
         """Tạo mô tả dựa trên metadata"""
         try:
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
-            cap.release()
+            video = VideoFileClip(video_path)
+            duration = video.duration
+            video.close()
             
             # Dùng AI để sinh mô tả hợp lý
             prompt = f"""
@@ -259,17 +252,13 @@ class VideoStorageManager:
         Returns:
             Dict: Metadata video
         """
-        cap = cv2.VideoCapture(video_path)
+        video = VideoFileClip(video_path)
         
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        duration = frame_count / fps if fps > 0 else 0
-        
-        cap.release()
-        
+        duration = video.duration
+        width, height = video.size
         file_size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        
+        video.close()
         
         return {
             "duration": duration,
@@ -347,9 +336,9 @@ class VideoStorageManager:
         # Nếu đã có version nén
         if video_info.compressed_path and os.path.exists(video_info.compressed_path):
             return True
-        
-        # Nếu file nhỏ hơn 15MB, không cần nén
-        if video_info.file_size_mb <= 15:
+
+        # Nếu file nhỏ hơn 100MB, không cần nén
+        if video_info.file_size_mb <= 100:
             video_info.compressed_path = video_info.stored_path
             self.save_video_info(video_info)
             return True
@@ -373,41 +362,43 @@ class VideoStorageManager:
             return False
     
     def _compress_video_opencv(self, input_path: str, output_path: str) -> bool:
-        """Nén video bằng OpenCV"""
+        """Nén video bằng moviepy"""
         try:
-            cap = cv2.VideoCapture(input_path)
-            
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            video = VideoFileClip(input_path)
             
             # Tối ưu thông số
-            new_fps = min(fps, 24)
-            new_width = min(width, 1280)
-            new_height = min(height, 720)
+            new_fps = min(video.fps, 24)
+            new_width = min(video.size[0], 1280)
+            new_height = min(video.size[1], 720)
             
             # Giữ tỷ lệ khung hình
-            if width > height:
-                new_height = int(new_width * height / width)
+            if video.size[0] > video.size[1]:
+                new_height = int(new_width * video.size[1] / video.size[0])
             else:
-                new_width = int(new_height * width / height)
+                new_width = int(new_height * video.size[0] / video.size[1])
             
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(output_path, fourcc, new_fps, (new_width, new_height))
+            # Resize và nén video
+            resized_clip = video.resize(width=new_width)
             
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame = cv2.resize(frame, (new_width, new_height))
-                out.write(frame)
+            # Nén với bitrate thấp hơn để đạt kích thước mục tiêu (30MB)
+            target_size_mb = 30
+            duration = video.duration
+            target_bitrate = str(int((target_size_mb * 8192) / duration)) + 'k'
             
-            cap.release()
-            out.release()
+            resized_clip.write_videofile(
+                output_path,
+                fps=new_fps,
+                preset='veryslow',  # Nén chất lượng cao nhất có thể
+                bitrate=target_bitrate,
+                codec='libx264'
+            )
+            
+            video.close()
+            resized_clip.close()
             
             # Kiểm tra kết quả
             new_size = os.path.getsize(output_path) / (1024 * 1024)
-            return new_size < 15
+            return new_size < 30
             
         except Exception as e:
             print(f"Lỗi nén OpenCV: {e}")

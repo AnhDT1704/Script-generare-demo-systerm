@@ -6,5 +6,10 @@ pillow>=10.0.0
 pandas>=2.0.0
 pathlib>=1.0.1
 python-multipart>=0.0.6
-moviepy>=1.0.3>=1.28.0
+moviepy==2.0.0.dev2
+decorator>=4.4.2
+imageio>=2.9.0
+imageio-ffmpeg>=0.4.3
+tqdm>=4.43.0
+proglog>=0.1.9
 

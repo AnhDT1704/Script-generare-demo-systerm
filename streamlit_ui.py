@@ -31,14 +31,18 @@ def get_config():
             st.stop()
 
 # Import từ file gốc
+st.write("Đang thử import grok_VU.py...")
+import os
+st.write(f"Current directory: {os.getcwd()}")
+st.write(f"Files in directory: {os.listdir('.')}")
+
 try:
-    from .grok_VU import EnhancedVideoScriptGenerator, VideoStorageManager, OptimizedVideoAnalyzer
-except ImportError:
-    try:
-        from grok_VU import EnhancedVideoScriptGenerator, VideoStorageManager, OptimizedVideoAnalyzer
-    except ImportError:
-        st.error("Không thể import grok_VU.py. Hãy đảm bảo file grok_VU.py ở cùng thư mục với app này.")
-        st.stop()
+    from grok_VU import EnhancedVideoScriptGenerator, VideoStorageManager, OptimizedVideoAnalyzer
+    st.write("Import thành công!")
+except ImportError as e:
+    st.error(f"Không thể import grok_VU.py. Chi tiết lỗi: {str(e)}")
+    st.write("Hãy đảm bảo file grok_VU.py ở cùng thư mục với app này.")
+    st.stop()
 
 # Cấu hình trang
 st.set_page_config(
